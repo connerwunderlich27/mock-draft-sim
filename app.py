@@ -67,14 +67,42 @@ if st.sidebar.button("Restart draft"):
 
 # ---------- main draft area ----------
 
+# ---------- main draft area ----------
+
+# Auto-advance bots until it's the user's turn or the draft ends
+while (
+    not draft.is_finished()
+    and draft.get_current_team_index() != draft.user_team_index
+):
+    # Compute overall pick BEFORE advancing (this is the pick they're about to make)
+    current_overall = (draft.current_round - 1) * draft.num_teams + draft.current_pick_in_round
+    bot_team_idx = draft.get_current_team_index()
+
+    drafted = draft.make_bot_pick_with_prefs(
+        rb_pref=rb_pref,
+        qb_pref=qb_pref,
+        rookie_pref=rookie_pref,
+    )
+    if drafted is None:
+        break
+
+    text = (
+        f"Pick #{current_overall}: Team {bot_team_idx + 1} drafted "
+        f"{drafted.name} ({drafted.position} - {drafted.team}, ADP {int(drafted.adp)})"
+    )
+    st.session_state.recent_picks.append(text)
+
+# If the draft finished during auto-advance, show final results
 if draft.is_finished():
     st.success("Draft complete!")
     st.subheader("Final Draft Board")
     st.dataframe(draft.summary_df().sort_values("overall_pick"))
     st.stop()
 
+# At this point, either it's your turn or the draft is over
 current_team_idx = draft.get_current_team_index()
 current_overall = (draft.current_round - 1) * draft.num_teams + draft.current_pick_in_round
+
 
 st.subheader(
     f"Round {draft.current_round} - Pick {draft.current_pick_in_round} of {draft.num_teams} "
@@ -93,7 +121,7 @@ else:
 
 user_on_clock = current_team_idx == draft.user_team_index
 
-# ----- User or bot action -----
+# ----- User action (should always be your pick here) -----
 
 if user_on_clock:
     st.markdown("## Your pick is on the clock!")
@@ -132,19 +160,10 @@ if user_on_clock:
                     f"({drafted.position} - {drafted.team}, ADP {int(drafted.adp)})"
                 )
 else:
-    st.markdown(f"## Team {current_team_idx + 1} (bot) is picking")
+    # This should basically never happen, but it's a safety net
+    st.markdown("## Bots are drafting…")
+    st.info("Bots have been auto-advanced to your next pick. Try rerunning the app if this persists.")
 
-    if st.button("Advance bot pick"):
-        drafted = draft.make_bot_pick()
-        if drafted is None:
-            st.warning("No players left to draft.")
-        else:
-            text = (
-                f"Pick #{current_overall}: Team {current_team_idx + 1} drafted "
-                f"{drafted.name} ({drafted.position} - {drafted.team}, ADP {int(drafted.adp)})"
-            )
-            st.session_state.recent_picks.append(text)
-            st.info(text)
 
 # ---------- Your roster + draft summary ----------
 
