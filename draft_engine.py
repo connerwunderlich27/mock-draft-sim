@@ -5,6 +5,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 import pandas as pd
+import random
 
 
 @dataclass
@@ -35,6 +36,7 @@ class Draft:
       - 'Position' (like 'WR-01' -> we keep 'WR')
       - 'Player'
       - 'Team'
+      - optional: 'Rookie' (1 = rookie, 0 = not)
     """
 
     def __init__(
@@ -49,23 +51,21 @@ class Draft:
         self.user_team_index = user_team_index
         self.teams: List[Team] = [Team(name=f"Team {i+1}") for i in range(num_teams)]
 
-       df = players_df.copy()
+        df = players_df.copy()
 
-# Optional: mark rookies if a 'Rookie' column exists (1 = rookie, 0 = not)
-if "Rookie" in df.columns:
-    # store a set of player names who are rookies
-    self.rookie_names = set(
-        df.loc[df["Rookie"] == 1, "Player"].astype(str)
-    )
-else:
-    self.rookie_names = set()
+        # Optional: mark rookies if a 'Rookie' column exists (1 = rookie, 0 = not)
+        if "Rookie" in df.columns:
+            self.rookie_names = set(
+                df.loc[df["Rookie"] == 1, "Player"].astype(str)
+            )
+        else:
+            self.rookie_names = set()
 
-# "WR-01" -> "WR"
-df["pos_group"] = df["Position"].astype(str).str.split("-").str[0]
+        # "WR-01" -> "WR"
+        df["pos_group"] = df["Position"].astype(str).str.split("-").str[0]
 
-# Sort by ADP ascending (1 is earliest)
-df = df.sort_values("ADP", ascending=True)
-
+        # Sort by ADP ascending (1 is earliest)
+        df = df.sort_values("ADP", ascending=True)
 
         # Build the player pool
         self.player_pool: List[Player] = [
@@ -104,50 +104,17 @@ df = df.sort_values("ADP", ascending=True)
     def is_finished(self) -> bool:
         return self.current_round > self.num_rounds
 
-    # ---------- picking ----------
+    # ---------- basic picking (pure ADP) ----------
 
     def _pop_best_available(self) -> Optional[Player]:
         if not self.player_pool:
             return None
         return self.player_pool.pop(0)
-        
-    def _score_player_for_prefs(self, player: Player,
-                            rb_pref: int, qb_pref: int, rookie_pref: int) -> float:
-    """
-    Compute a score for a player given bot preferences.
-    Higher score = more attractive to the bot.
 
-    - Base: prefer lower ADP (earlier ranked players)
-    - Add bonus if RB / QB based on sliders
-    - Add bonus if rookie based on slider
-    - Multiply by a small random factor to introduce draft variability
-    """
-    # Base: lower ADP -> higher score, so we take negative
-    score = -player.adp
-
-    # Position bonuses
-    if player.position == "RB":
-        score += rb_pref
-    if player.position == "QB":
-        score += qb_pref
-
-    # Rookie bonus (if we know who rookies are)
-    is_rookie = player.name in getattr(self, "rookie_names", set())
-    if is_rookie:
-        score += rookie_pref
-
-    # Controlled randomness: 0.8–1.2 multiplier
-    randomness_factor = random.uniform(0.8, 1.2)
-    score *= randomness_factor
-
-    return score
-
-
-    
     def make_bot_pick(self) -> Optional[Player]:
         """
         Basic bot: always takes best ADP.
-        We'll later factor in RB/QB/rookie sliders here.
+        (Not used once we use make_bot_pick_with_prefs, but kept as a fallback.)
         """
         player = self._pop_best_available()
         team_idx = self.get_current_team_index()
@@ -155,6 +122,82 @@ df = df.sort_values("ADP", ascending=True)
             self.teams[team_idx].add_player(player)
         self._advance_pick()
         return player
+
+    # ---------- preference-based bot picking ----------
+
+    def _score_player_for_prefs(
+        self,
+        player: Player,
+        rb_pref: int,
+        qb_pref: int,
+        rookie_pref: int,
+    ) -> float:
+        """
+        Compute a score for a player given bot preferences.
+        Higher score = more attractive to the bot.
+
+        - Base: prefer lower ADP (earlier ranked players)
+        - Add bonus if RB / QB based on sliders
+        - Add bonus if rookie based on slider
+        - Multiply by a small random factor to introduce draft variability
+        """
+        # Base: lower ADP -> higher score, so we take negative
+        score = -player.adp
+
+        # Position bonuses
+        if player.position == "RB":
+            score += rb_pref
+        if player.position == "QB":
+            score += qb_pref
+
+        # Rookie bonus (if we know who rookies are)
+        is_rookie = player.name in self.rookie_names
+        if is_rookie:
+            score += rookie_pref
+
+        # Controlled randomness: 0.8–1.2 multiplier
+        randomness_factor = random.uniform(0.8, 1.2)
+        score *= randomness_factor
+
+        return score
+
+    def make_bot_pick_with_prefs(
+        self,
+        rb_pref: int,
+        qb_pref: int,
+        rookie_pref: int,
+        lookahead: int = 30,
+    ) -> Optional[Player]:
+        """
+        Bot pick that takes into account position / rookie preferences.
+
+        - Look at the top `lookahead` players by ADP (e.g., top 30)
+        - Score them using the sliders + randomness
+        - Draft the one with the highest score
+        """
+        if not self.player_pool:
+            return None
+
+        # Limit to top N by ADP so bot still behaves reasonably
+        candidates = self.player_pool[:lookahead]
+
+        # Choose the player with the highest preference-based score
+        best_player = max(
+            candidates,
+            key=lambda p: self._score_player_for_prefs(p, rb_pref, qb_pref, rookie_pref),
+        )
+
+        # Remove that specific player from the pool
+        idx = self.player_pool.index(best_player)
+        player = self.player_pool.pop(idx)
+
+        # Assign to current team and advance the draft
+        team_idx = self.get_current_team_index()
+        self.teams[team_idx].add_player(player)
+        self._advance_pick()
+        return player
+
+    # ---------- user picks ----------
 
     def make_user_pick(self, player_name: str) -> Optional[Player]:
         """User picks by player name from remaining pool."""
@@ -200,4 +243,3 @@ df = df.sort_values("ADP", ascending=True)
                         }
                     )
         return pd.DataFrame(rows)
-
