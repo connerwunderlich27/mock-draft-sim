@@ -139,7 +139,7 @@ class Draft:
         - Base: prefer lower ADP (earlier ranked players)
         - Add bonus if RB / QB based on sliders
         - Add bonus if rookie based on slider
-        - Multiply by a small random factor to introduce draft variability
+        - Add additive randomness that grows by round
         """
         # Base: lower ADP -> higher score, so we take negative
         score = -player.adp
@@ -155,9 +155,15 @@ class Draft:
         if is_rookie:
             score += rookie_pref
 
-        # Controlled randomness: 0.8–1.2 multiplier
-        randomness_factor = random.uniform(0.8, 1.2)
-        score *= randomness_factor
+        # --- controlled randomness (additive) ---
+        # Earlier rounds: small noise, later rounds: larger.
+        overall_pick = (self.current_round - 1) * self.num_teams + self.current_pick_in_round
+        round_index = (overall_pick - 1) // self.num_teams + 1  # 1-based round
+
+        # Noise scale: about ±0.5 in round 1, growing up to ±3 by later rounds
+        noise_scale = min(0.5 + 0.4 * (round_index - 1), 3.0)
+        noise = random.uniform(-noise_scale, noise_scale)
+        score += noise
 
         return score
 
@@ -243,3 +249,4 @@ class Draft:
                         }
                     )
         return pd.DataFrame(rows)
+
