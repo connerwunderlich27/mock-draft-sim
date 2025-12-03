@@ -5,6 +5,7 @@
 import streamlit as st
 import pandas as pd
 from draft_engine import Draft
+import time  # for simple pick animation
 
 st.set_page_config(page_title="Fantasy Football Mock Draft Simulator", layout="wide")
 
@@ -36,6 +37,8 @@ user_slot = st.sidebar.number_input(
 )
 user_team_index = user_slot - 1
 
+st.sidebar.caption("Adjust settings, then start the draft.")
+
 # ---------- bot preference sliders ----------
 
 st.sidebar.subheader("Bot Preferences")
@@ -64,8 +67,6 @@ rookie_pref = st.sidebar.slider(
     help="Higher = bots more likely to take rookies (based on Rookie column).",
 )
 
-
-
 # ---------- session state: draft + recent picks ----------
 
 if "draft" not in st.session_state:
@@ -83,7 +84,6 @@ draft: Draft = st.session_state.draft
 if "draft_started" not in st.session_state:
     st.session_state.draft_started = False
 
-
 # Allow user to restart with new settings
 if st.sidebar.button("Restart draft"):
     st.session_state.draft = Draft(
@@ -95,6 +95,7 @@ if st.sidebar.button("Restart draft"):
     st.session_state.recent_picks = []
     st.session_state.draft_started = False
     draft = st.session_state.draft
+
 # ---------- main draft area ----------
 
 # If the draft hasn't started yet, show a setup screen and wait
@@ -110,21 +111,29 @@ if not st.session_state.draft_started:
         "Adjust the settings in the sidebar, then click **Start Draft** when you're ready."
     )
 
-    if st.button("Start Draft"):
-        st.session_state.draft_started = True
+    clicked = st.button("Start Draft")
 
-    # Stop here until the user actually starts the draft
-    st.stop()
+    if clicked:
+        # Mark as started and immediately continue into the draft
+        st.session_state.draft_started = True
+    else:
+        # Still not started: stop here, don't run picks yet
+        st.stop()
 
 # ---------- main draft area (after start) ----------
 
 # Auto-advance bots until it's the user's turn or the draft ends
+live_pick_box = st.empty()  # placeholder for simple "current pick" animation
+
 while (
     not draft.is_finished()
     and draft.get_current_team_index() != draft.user_team_index
 ):
     # Compute overall pick BEFORE advancing (this is the pick they're about to make)
-    current_overall = (draft.current_round - 1) * draft.num_teams + draft.current_pick_in_round
+    current_overall = (
+        (draft.current_round - 1) * draft.num_teams
+        + draft.current_pick_in_round
+    )
     bot_team_idx = draft.get_current_team_index()
 
     drafted = draft.make_bot_pick_with_prefs(
@@ -141,6 +150,10 @@ while (
     )
     st.session_state.recent_picks.append(text)
 
+    # Show this pick in a live "animation" box and pause briefly
+    live_pick_box.info(text)
+    time.sleep(0.4)  # tweak this delay for faster/slower animation
+
 # If the draft finished during auto-advance, show final results
 if draft.is_finished():
     st.success("Draft complete!")
@@ -150,8 +163,10 @@ if draft.is_finished():
 
 # At this point, either it's your turn or the draft is over
 current_team_idx = draft.get_current_team_index()
-current_overall = (draft.current_round - 1) * draft.num_teams + draft.current_pick_in_round
-
+current_overall = (
+    (draft.current_round - 1) * draft.num_teams
+    + draft.current_pick_in_round
+)
 
 st.subheader(
     f"Round {draft.current_round} - Pick {draft.current_pick_in_round} of {draft.num_teams} "
@@ -213,7 +228,6 @@ else:
     st.markdown("## Bots are drafting…")
     st.info("Bots have been auto-advanced to your next pick. Try rerunning the app if this persists.")
 
-
 # ---------- Your roster + draft summary ----------
 
 col1, col2 = st.columns(2)
@@ -241,3 +255,4 @@ with col2:
         st.dataframe(summary.sort_values("overall_pick"))
     else:
         st.caption("No picks recorded yet.")
+
