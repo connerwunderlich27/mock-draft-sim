@@ -36,9 +36,34 @@ user_slot = st.sidebar.number_input(
 )
 user_team_index = user_slot - 1
 
-st.sidebar.caption("ADP source: ADP_Table.csv")
+# ---------- bot preference sliders ----------
 
-# (we'll add bot preference sliders in a later step)
+st.sidebar.subheader("Bot Preferences")
+
+rb_pref = st.sidebar.slider(
+    "RB preference",
+    min_value=0,
+    max_value=10,
+    value=5,
+    help="Higher = bots more likely to take RBs when choosing between similar players.",
+)
+
+qb_pref = st.sidebar.slider(
+    "QB preference",
+    min_value=0,
+    max_value=10,
+    value=3,
+    help="Higher = bots more likely to take QBs.",
+)
+
+rookie_pref = st.sidebar.slider(
+    "Rookie preference",
+    min_value=0,
+    max_value=10,
+    value=4,
+    help="Higher = bots more likely to take rookies (based on Rookie column).",
+)
+
 
 
 # ---------- session state: draft + recent picks ----------
@@ -64,8 +89,6 @@ if st.sidebar.button("Restart draft"):
     )
     st.session_state.recent_picks = []
     draft = st.session_state.draft
-
-# ---------- main draft area ----------
 
 # ---------- main draft area ----------
 
