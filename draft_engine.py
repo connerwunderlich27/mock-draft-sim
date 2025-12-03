@@ -49,13 +49,23 @@ class Draft:
         self.user_team_index = user_team_index
         self.teams: List[Team] = [Team(name=f"Team {i+1}") for i in range(num_teams)]
 
-        df = players_df.copy()
+       df = players_df.copy()
 
-        # "WR-01" -> "WR"
-        df["pos_group"] = df["Position"].astype(str).str.split("-").str[0]
+# Optional: mark rookies if a 'Rookie' column exists (1 = rookie, 0 = not)
+if "Rookie" in df.columns:
+    # store a set of player names who are rookies
+    self.rookie_names = set(
+        df.loc[df["Rookie"] == 1, "Player"].astype(str)
+    )
+else:
+    self.rookie_names = set()
 
-        # Sort by ADP ascending (1 is earliest)
-        df = df.sort_values("ADP", ascending=True)
+# "WR-01" -> "WR"
+df["pos_group"] = df["Position"].astype(str).str.split("-").str[0]
+
+# Sort by ADP ascending (1 is earliest)
+df = df.sort_values("ADP", ascending=True)
+
 
         # Build the player pool
         self.player_pool: List[Player] = [
@@ -100,7 +110,40 @@ class Draft:
         if not self.player_pool:
             return None
         return self.player_pool.pop(0)
+        
+    def _score_player_for_prefs(self, player: Player,
+                            rb_pref: int, qb_pref: int, rookie_pref: int) -> float:
+    """
+    Compute a score for a player given bot preferences.
+    Higher score = more attractive to the bot.
 
+    - Base: prefer lower ADP (earlier ranked players)
+    - Add bonus if RB / QB based on sliders
+    - Add bonus if rookie based on slider
+    - Multiply by a small random factor to introduce draft variability
+    """
+    # Base: lower ADP -> higher score, so we take negative
+    score = -player.adp
+
+    # Position bonuses
+    if player.position == "RB":
+        score += rb_pref
+    if player.position == "QB":
+        score += qb_pref
+
+    # Rookie bonus (if we know who rookies are)
+    is_rookie = player.name in getattr(self, "rookie_names", set())
+    if is_rookie:
+        score += rookie_pref
+
+    # Controlled randomness: 0.8–1.2 multiplier
+    randomness_factor = random.uniform(0.8, 1.2)
+    score *= randomness_factor
+
+    return score
+
+
+    
     def make_bot_pick(self) -> Optional[Player]:
         """
         Basic bot: always takes best ADP.
