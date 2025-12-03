@@ -79,6 +79,11 @@ if "draft" not in st.session_state:
 
 draft: Draft = st.session_state.draft
 
+# Track whether the draft has actually started yet
+if "draft_started" not in st.session_state:
+    st.session_state.draft_started = False
+
+
 # Allow user to restart with new settings
 if st.sidebar.button("Restart draft"):
     st.session_state.draft = Draft(
@@ -88,9 +93,30 @@ if st.sidebar.button("Restart draft"):
         user_team_index=user_team_index,
     )
     st.session_state.recent_picks = []
+    st.session_state.draft_started = False
     draft = st.session_state.draft
-
 # ---------- main draft area ----------
+
+# If the draft hasn't started yet, show a setup screen and wait
+if not st.session_state.draft_started:
+    st.header("Set up your mock draft")
+
+    st.markdown(
+        f"**Number of teams:** {num_teams}  \n"
+        f"**Number of rounds:** {num_rounds}  \n"
+        f"**Your draft slot:** {user_slot}"
+    )
+    st.markdown(
+        "Adjust the settings in the sidebar, then click **Start Draft** when you're ready."
+    )
+
+    if st.button("Start Draft"):
+        st.session_state.draft_started = True
+
+    # Stop here until the user actually starts the draft
+    st.stop()
+
+# ---------- main draft area (after start) ----------
 
 # Auto-advance bots until it's the user's turn or the draft ends
 while (
