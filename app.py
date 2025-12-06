@@ -169,7 +169,6 @@ while (
     )
     bot_team_idx = draft.get_current_team_index()
 
-)
 drafted = draft.make_bot_pick_with_prefs(
         rb_pref=rb_pref,
         qb_pref=qb_pref,
