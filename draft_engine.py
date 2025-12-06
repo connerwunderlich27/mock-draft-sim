@@ -142,32 +142,98 @@ class Draft:
         - Add bonus/penalty if RB / QB based on sliders (-5..+5)
         - Add bonus/penalty if rookie based on slider (-5..+5)
         - Add bonus/penalty if on favorite team (-5..+5)
+        - Enforce positional value rules for QB/TE and RB/WR balance
+        - Add stacking bonus for QB–WR/TE pairs
         - Add additive randomness that grows by round
         """
         # Base: lower ADP -> higher score, so we take negative
         score = -player.adp
 
-        # Position bonuses
+        # ----- current team context (for roster-aware behavior) -----
+        team_idx = self.get_current_team_index()
+        team = self.teams[team_idx]
+        qb_count = sum(1 for p in team.picks if p.position == "QB")
+        te_count = sum(1 for p in team.picks if p.position == "TE")
+        rb_count = sum(1 for p in team.picks if p.position == "RB")
+        wr_count = sum(1 for p in team.picks if p.position == "WR")
+
+        # For stacking: which NFL teams does this roster already have at QB vs WR/TE?
+        qb_teams = {p.team for p in team.picks if p.position == "QB"}
+        receiver_teams = {p.team for p in team.picks if p.position in ("WR", "TE")}
+
+        # We will use round_index both for "early rounds" logic and noise.
+        overall_pick = (self.current_round - 1) * self.num_teams + self.current_pick_in_round
+        round_index = (overall_pick - 1) // self.num_teams + 1  # 1-based round
+
+        # ----- position preference sliders -----
         if player.position == "RB":
             score += rb_pref
         if player.position == "QB":
             score += qb_pref
+        # TE: no slider yet (you could add one later)
 
-        # Rookie bonus (if we know who rookies are)
+        # ----- rookie preference slider -----
         is_rookie = player.name in self.rookie_names
         if is_rookie:
             score += rookie_pref
 
-        # Team preference bonus (if selected)
+        # ----- team preference (favorite NFL team) -----
         if fav_team is not None and player.team == fav_team:
             score += team_pref
 
-        # --- controlled randomness (additive) ---
-        # Earlier rounds: small noise, later rounds: larger.
-        overall_pick = (self.current_round - 1) * self.num_teams + self.current_pick_in_round
-        round_index = (overall_pick - 1) // self.num_teams + 1  # 1-based round
+        # ----- positional value rules for QB / TE -----
+        HARD_CAP = 2
+        HUGE_PENALTY = 1e6  # effectively "do not draft"
 
-        # Noise scale: about ±0.5 in round 1, growing up to ±3 by later rounds
+        if player.position == "QB":
+            if qb_count >= HARD_CAP:
+                score -= HUGE_PENALTY
+            else:
+                EARLY_ROUND_LIMIT_QB = 6
+                if qb_count >= 1 and round_index <= EARLY_ROUND_LIMIT_QB:
+                    # Strong penalty for drafting a 2nd QB early.
+                    score -= 8.0
+
+        if player.position == "TE":
+            if te_count >= HARD_CAP:
+                score -= HUGE_PENALTY
+            else:
+                EARLY_ROUND_LIMIT_TE = 6
+                if te_count >= 1 and round_index <= EARLY_ROUND_LIMIT_TE:
+                    # Strong penalty for drafting a 2nd TE early.
+                    score -= 8.0
+
+        # ----- RB/WR balance rules -----
+        # You don't want 5 WRs before any RB (and vice versa).
+        # We'll discourage extreme imbalance, especially early.
+        if player.position == "WR":
+            # If they'd be drafting WR #5 and have 0 RBs -> huge penalty.
+            if wr_count >= 4 and rb_count == 0:
+                score -= 12.0
+            # If they'd be WR #5 and only 1 RB, still a big penalty.
+            elif wr_count >= 4 and rb_count <= 1 and round_index <= 8:
+                score -= 6.0
+
+        if player.position == "RB":
+            # Symmetric logic: don't draft RB #5 before any WR.
+            if rb_count >= 4 and wr_count == 0:
+                score -= 12.0
+            elif rb_count >= 4 and wr_count <= 1 and round_index <= 8:
+                score -= 6.0
+
+        # ----- stacking bonus (QB <-> WR/TE on same NFL team) -----
+        STACK_BONUS = 1.5  # small, mostly for tiebreaker
+
+        # If we have QB from this team, boost WR/TE from same team.
+        if player.position in ("WR", "TE") and player.team in qb_teams:
+            score += STACK_BONUS
+
+        # If we have WR/TE from this team, boost QB from same team.
+        if player.position == "QB" and player.team in receiver_teams:
+            score += STACK_BONUS
+
+        # ----- controlled randomness (additive) -----
+        # Earlier rounds: small noise, later rounds: larger.
         noise_scale = min(0.5 + 0.4 * (round_index - 1), 3.0)
         noise = random.uniform(-noise_scale, noise_scale)
         score += noise
