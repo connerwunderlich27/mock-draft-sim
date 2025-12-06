@@ -131,14 +131,17 @@ class Draft:
         rb_pref: int,
         qb_pref: int,
         rookie_pref: int,
+        fav_team: Optional[str],
+        team_pref: int,
     ) -> float:
         """
         Compute a score for a player given bot preferences.
         Higher score = more attractive to the bot.
 
         - Base: prefer lower ADP (earlier ranked players)
-        - Add bonus if RB / QB based on sliders
-        - Add bonus if rookie based on slider
+        - Add bonus/penalty if RB / QB based on sliders (-5..+5)
+        - Add bonus/penalty if rookie based on slider (-5..+5)
+        - Add bonus/penalty if on favorite team (-5..+5)
         - Add additive randomness that grows by round
         """
         # Base: lower ADP -> higher score, so we take negative
@@ -154,6 +157,10 @@ class Draft:
         is_rookie = player.name in self.rookie_names
         if is_rookie:
             score += rookie_pref
+
+        # Team preference bonus (if selected)
+        if fav_team is not None and player.team == fav_team:
+            score += team_pref
 
         # --- controlled randomness (additive) ---
         # Earlier rounds: small noise, later rounds: larger.
@@ -172,10 +179,12 @@ class Draft:
         rb_pref: int,
         qb_pref: int,
         rookie_pref: int,
+        fav_team: Optional[str] = None,
+        team_pref: int = 0,
         lookahead: int = 30,
     ) -> Optional[Player]:
         """
-        Bot pick that takes into account position / rookie preferences.
+        Bot pick that takes into account position / rookie / team preferences.
 
         - Look at the top `lookahead` players by ADP (e.g., top 30)
         - Score them using the sliders + randomness
@@ -190,7 +199,9 @@ class Draft:
         # Choose the player with the highest preference-based score
         best_player = max(
             candidates,
-            key=lambda p: self._score_player_for_prefs(p, rb_pref, qb_pref, rookie_pref),
+            key=lambda p: self._score_player_for_prefs(
+                p, rb_pref, qb_pref, rookie_pref, fav_team, team_pref
+            ),
         )
 
         # Remove that specific player from the pool
@@ -249,4 +260,3 @@ class Draft:
                         }
                     )
         return pd.DataFrame(rows)
-
