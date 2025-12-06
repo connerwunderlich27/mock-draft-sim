@@ -253,14 +253,15 @@ if user_on_clock:
             if drafted is None:
                 st.error("Player not found or already drafted.")
             else:
-                st.success(
-                    f"You drafted {drafted.name} "
-                    f"({drafted.position} - {drafted.team}, ADP {int(drafted.adp)})"
+                # Log your pick
+                text = (
+                    f"Pick #{current_overall}: Team {draft.user_team_index + 1} drafted "
+                    f"{drafted.name} ({drafted.position} - {drafted.team}, ADP {int(drafted.adp)})"
                 )
-else:
-    # This should basically never happen, but it's a safety net
-    st.markdown("## Bots are drafting…")
-    st.info("Bots have been auto-advanced to your next pick. Try rerunning the app if this persists.")
+                st.session_state.recent_picks.append(text)
+
+                # Force a rerun so bots immediately pick and UI updates
+                st.rerun()
 
 # ---------- Your roster + draft summary ----------
 
