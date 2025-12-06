@@ -67,6 +67,37 @@ rookie_pref = st.sidebar.slider(
     help="Negative = avoid rookies; positive = prefer rookies."
 )
 
+# ---------- team preference toggle ----------
+
+st.sidebar.subheader("Team Preference")
+
+# Keep track of whether the user has enabled team preference
+if "use_team_pref" not in st.session_state:
+    st.session_state.use_team_pref = False
+
+if st.sidebar.button("Add team preference"):
+    st.session_state.use_team_pref = True
+
+fav_team = None
+team_pref = 0
+
+if st.session_state.use_team_pref:
+    team_options = sorted(players_df["Team"].unique())
+    fav_team_choice = st.sidebar.selectbox(
+        "Team for bots to favor",
+        ["None"] + team_options,
+    )
+    team_pref = st.sidebar.slider(
+        "Team preference (-5 to +5)",
+        min_value=-5,
+        max_value=5,
+        value=3,
+        help="Negative = bots avoid this team; positive = bots favor this team."
+    )
+
+    if fav_team_choice != "None":
+        fav_team = fav_team_choice
+
 # ---------- session state: draft + recent picks ----------
 
 if "draft" not in st.session_state:
@@ -94,7 +125,9 @@ if st.sidebar.button("Restart draft"):
     )
     st.session_state.recent_picks = []
     st.session_state.draft_started = False
+    st.session_state.use_team_pref = False
     draft = st.session_state.draft
+
 
 # ---------- main draft area ----------
 
@@ -136,10 +169,12 @@ while (
     )
     bot_team_idx = draft.get_current_team_index()
 
-    drafted = draft.make_bot_pick_with_prefs(
+)
+drafted = draft.make_bot_pick_with_prefs(
         rb_pref=rb_pref,
         qb_pref=qb_pref,
         rookie_pref=rookie_pref,
+        team_pref=team_pref
     )
     if drafted is None:
         break
