@@ -44,27 +44,27 @@ st.sidebar.caption("Adjust settings, then start the draft.")
 st.sidebar.subheader("Bot Preferences")
 
 rb_pref = st.sidebar.slider(
-    "RB preference",
-    min_value=0,
-    max_value=10,
-    value=5,
-    help="Higher = bots more likely to take RBs when choosing between similar players.",
+    "RB preference (-5 to +5)",
+    min_value=-5,
+    max_value=5,
+    value=0,
+    help="Negative = bots avoid RBs; positive = bots favor RBs."
 )
 
 qb_pref = st.sidebar.slider(
-    "QB preference",
-    min_value=0,
-    max_value=10,
-    value=3,
-    help="Higher = bots more likely to take QBs.",
+    "QB preference (-5 to +5)",
+    min_value=-5,
+    max_value=5,
+    value=0,
+    help="Negative = bots avoid QBs; positive = bots favor QBs."
 )
 
 rookie_pref = st.sidebar.slider(
-    "Rookie preference",
-    min_value=0,
-    max_value=10,
-    value=4,
-    help="Higher = bots more likely to take rookies (based on Rookie column).",
+    "Rookie preference (-5 to +5)",
+    min_value=-5,
+    max_value=5,
+    value=0,
+    help="Negative = avoid rookies; positive = prefer rookies."
 )
 
 # ---------- session state: draft + recent picks ----------
