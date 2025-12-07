@@ -26,6 +26,121 @@ def load_adp_table(path: str = "ADP_Table.csv") -> pd.DataFrame:
 
 players_df = load_adp_table()
 
+# ---------- create board visual ----------
+def render_draft_board(draft: Draft):
+    """Render a Sleeper-style draft board: rounds as rows, teams as columns."""
+    teams = draft.teams
+    num_teams = draft.num_teams
+    num_rounds = draft.num_rounds
+
+    # Position text colors
+    pos_colors = {
+        "QB": "#ffb347",  # orange-ish
+        "RB": "#77dd77",  # green
+        "WR": "#aec6cf",  # blue-ish
+        "TE": "#cba4ff",  # purple
+        "DEF": "#ff6961", # red-ish
+        "K": "#fdfd96",   # yellow
+    }
+    default_color = "#ffffff"
+
+    board_html = f"""
+    <style>
+    .draft-board-wrapper {{
+      background-color: #8b0000; /* dark red board background */
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 8px;
+    }}
+    .draft-board {{
+      display: grid;
+      grid-template-columns: 120px repeat({num_teams}, 1fr);
+      gap: 6px;
+    }}
+    .draft-board-header {{
+      font-weight: 700;
+      text-align: center;
+      color: #ffffff;
+      font-size: 0.85rem;
+    }}
+    .draft-board-round-label {{
+      font-weight: 600;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+    }}
+    .draft-card {{
+      background-color: #333333; /* gray cards */
+      border-radius: 6px;
+      padding: 4px;
+      min-height: 42px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }}
+    .draft-card-empty {{
+      opacity: 0.25;
+    }}
+    .draft-card-player {{
+      font-size: 0.80rem;
+      font-weight: 600;
+    }}
+    .draft-card-meta {{
+      font-size: 0.70rem;
+    }}
+    </style>
+    <div class="draft-board-wrapper">
+      <div class="draft-board">
+        <div></div>
+    """
+
+    # Header row: team names
+    for idx, team in enumerate(teams):
+        board_html += f'<div class="draft-board-header">Team {idx+1}</div>'
+
+    # Rows: rounds
+    for rnd in range(1, num_rounds + 1):
+        # Round label in first column
+        board_html += f'<div class="draft-board-round-label">Round {rnd}</div>'
+
+        # One cell per team in this round
+        for team in teams:
+            if len(team.picks) >= rnd:
+                p = team.picks[rnd - 1]
+                pos_color = pos_colors.get(p.position, default_color)
+                player_name = p.name
+                pos = p.position
+                nfl_team = p.team
+                try:
+                    adp_int = int(p.adp)
+                except Exception:
+                    adp_int = p.adp
+                board_html += f"""
+                <div class="draft-card">
+                  <div class="draft-card-player" style="color:{pos_color};">
+                    {player_name} ({pos})
+                  </div>
+                  <div class="draft-card-meta">
+                    {nfl_team} • ADP {adp_int}
+                  </div>
+                </div>
+                """
+            else:
+                # Empty cell (no pick yet in this round for this team)
+                board_html += """
+                <div class="draft-card draft-card-empty">
+                </div>
+                """
+
+    board_html += """
+      </div>
+    </div>
+    """
+
+    st.markdown(board_html, unsafe_allow_html=True)
+
 # ---------- Bot profile definitions (for advanced mode) ----------
 
 @dataclass
@@ -460,10 +575,6 @@ with col1:
         st.caption("You haven't drafted anyone yet.")
 
 with col2:
-    st.markdown("### Draft Summary (so far)")
-    summary = draft.summary_df()
-    if not summary.empty:
-        st.dataframe(summary.sort_values("overall_pick"))
-    else:
-        st.caption("No picks recorded yet.")
+    st.markdown("### Draft Board")
+    render_draft_board(draft)
 
