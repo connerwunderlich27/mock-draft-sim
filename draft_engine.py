@@ -133,6 +133,8 @@ class Draft:
         rookie_pref: int,
         fav_team: Optional[str],
         team_pref: int,
+        stack_weight: float,
+        randomness_factor: float,
     ) -> float:
         """
         Compute a score for a player given bot preferences.
@@ -143,8 +145,8 @@ class Draft:
         - Add bonus/penalty if rookie based on slider (-5..+5)
         - Add bonus/penalty if on favorite team (-5..+5)
         - Enforce positional value rules for QB/TE and RB/WR balance
-        - Add stacking bonus for QB–WR/TE pairs
-        - Add additive randomness that grows by round
+        - Add stacking bonus for QB–WR/TE pairs (scaled by stack_weight)
+        - Add additive randomness scaled by randomness_factor
         """
         # Base: lower ADP -> higher score, so we take negative
         score = -player.adp
@@ -204,38 +206,31 @@ class Draft:
                     score -= 8.0
 
         # ----- RB/WR balance rules -----
-        # You don't want 5 WRs before any RB (and vice versa).
-        # We'll discourage extreme imbalance, especially early.
+        # Don't go completely insane with 5 WR before any RB, etc.
         if player.position == "WR":
-            # If they'd be drafting WR #5 and have 0 RBs -> huge penalty.
             if wr_count >= 4 and rb_count == 0:
                 score -= 12.0
-            # If they'd be WR #5 and only 1 RB, still a big penalty.
             elif wr_count >= 4 and rb_count <= 1 and round_index <= 8:
                 score -= 6.0
 
         if player.position == "RB":
-            # Symmetric logic: don't draft RB #5 before any WR.
             if rb_count >= 4 and wr_count == 0:
                 score -= 12.0
             elif rb_count >= 4 and wr_count <= 1 and round_index <= 8:
                 score -= 6.0
 
         # ----- stacking bonus (QB <-> WR/TE on same NFL team) -----
-        STACK_BONUS = 1.5  # small, mostly for tiebreaker
-
-        # If we have QB from this team, boost WR/TE from same team.
+        # stack_weight controls how strong stacking is for this bot.
         if player.position in ("WR", "TE") and player.team in qb_teams:
-            score += STACK_BONUS
+            score += stack_weight
 
-        # If we have WR/TE from this team, boost QB from same team.
         if player.position == "QB" and player.team in receiver_teams:
-            score += STACK_BONUS
+            score += stack_weight
 
         # ----- controlled randomness (additive) -----
         # Earlier rounds: small noise, later rounds: larger.
         noise_scale = min(0.5 + 0.4 * (round_index - 1), 3.0)
-        noise = random.uniform(-noise_scale, noise_scale)
+        noise = random.uniform(-noise_scale, noise_scale) * randomness_factor
         score += noise
 
         return score
@@ -247,6 +242,8 @@ class Draft:
         rookie_pref: int,
         fav_team: Optional[str] = None,
         team_pref: int = 0,
+        stack_weight: float = 1.5,
+        randomness_factor: float = 1.0,
         lookahead: int = 30,
     ) -> Optional[Player]:
         """
@@ -266,7 +263,14 @@ class Draft:
         best_player = max(
             candidates,
             key=lambda p: self._score_player_for_prefs(
-                p, rb_pref, qb_pref, rookie_pref, fav_team, team_pref
+                p,
+                rb_pref,
+                qb_pref,
+                rookie_pref,
+                fav_team,
+                team_pref,
+                stack_weight,
+                randomness_factor,
             ),
         )
 
