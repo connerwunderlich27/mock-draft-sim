@@ -139,7 +139,15 @@ if bot_mode.startswith("General"):
     # ---------- general mode: global sliders for all bots ----------
 
     st.sidebar.subheader("Bot Preferences (Global)")
-
+    
+    qb_pref = st.sidebar.slider(
+        "QB preference (-5 to +5)",
+        min_value=-5,
+        max_value=5,
+        value=0,
+        help="Negative = bots avoid QBs; positive = bots favor QBs."
+    )
+    
     rb_pref = st.sidebar.slider(
         "RB preference (-5 to +5)",
         min_value=-5,
@@ -148,13 +156,6 @@ if bot_mode.startswith("General"):
         help="Negative = bots avoid RBs; positive = bots favor RBs."
     )
 
-    qb_pref = st.sidebar.slider(
-        "QB preference (-5 to +5)",
-        min_value=-5,
-        max_value=5,
-        value=0,
-        help="Negative = bots avoid QBs; positive = bots favor QBs."
-    )
 
     rookie_pref = st.sidebar.slider(
         "Rookie preference (-5 to +5)",
