@@ -5,6 +5,8 @@
 import streamlit as st
 import pandas as pd
 from draft_engine import Draft
+from dataclasses import dataclass
+from typing import Optional
 import time  # for simple pick animation
 
 st.set_page_config(page_title="Fantasy Football Mock Draft Simulator", layout="wide")
@@ -24,6 +26,78 @@ def load_adp_table(path: str = "ADP_Table.csv") -> pd.DataFrame:
 
 players_df = load_adp_table()
 
+# ---------- Bot profile definitions (for advanced mode) ----------
+
+@dataclass
+class BotProfile:
+    name: str
+    rb_pref: int            # -5..+5
+    qb_pref: int            # -5..+5
+    rookie_pref: int        # -5..+5
+    team_pref: int          # -5..+5
+    stack_weight: float     # how much this bot cares about stacking
+    randomness_factor: float = 1.0  # >1 = more chaotic, <1 = more disciplined
+    fav_team: Optional[str] = None  # set per-bot in UI if applicable
+
+
+BOT_PRESETS = {
+    "Balanced": BotProfile(
+        name="Balanced",
+        rb_pref=0,
+        qb_pref=0,
+        rookie_pref=0,
+        team_pref=0,
+        stack_weight=1.5,
+        randomness_factor=1.0,
+    ),
+    "Team Super Fan": BotProfile(
+        name="Team Super Fan",
+        rb_pref=0,
+        qb_pref=0,
+        rookie_pref=0,
+        team_pref=5,         # big preference for one team
+        stack_weight=2.0,    # likes stacking with that team
+        randomness_factor=1.0,
+        # fav_team will be chosen in the UI
+    ),
+    "RB Enthusiast": BotProfile(
+        name="RB Enthusiast",
+        rb_pref=4,
+        qb_pref=-2,
+        rookie_pref=0,
+        team_pref=0,
+        stack_weight=1.2,
+        randomness_factor=1.0,
+    ),
+    "Elite Onesie Drafter": BotProfile(
+        name="Elite Onesie Drafter",
+        rb_pref=1,
+        qb_pref=2,           # a bit more QB-friendly
+        rookie_pref=0,
+        team_pref=0,
+        stack_weight=1.5,
+        randomness_factor=0.9,  # slightly more disciplined
+    ),
+    "Upside Drafter": BotProfile(
+        name="Upside Drafter",
+        rb_pref=0,
+        qb_pref=0,
+        rookie_pref=5,       # loves rookies
+        team_pref=0,
+        stack_weight=2.0,
+        randomness_factor=1.2,
+    ),
+    "Chaos Bot": BotProfile(
+        name="Chaos Bot",
+        rb_pref=0,
+        qb_pref=0,
+        rookie_pref=2,       # mild rookie lean
+        team_pref=0,
+        stack_weight=1.5,    # normal stacking
+        randomness_factor=2.5,  # BIG variance: reaches and weird picks
+    ),
+}
+
 # ---------- sidebar: draft settings ----------
 
 st.sidebar.header("Draft Settings")
@@ -39,64 +113,136 @@ user_team_index = user_slot - 1
 
 st.sidebar.caption("Adjust settings, then start the draft.")
 
-# ---------- bot preference sliders ----------
+# ---------- bot configuration mode + preferences ----------
 
-st.sidebar.subheader("Bot Preferences")
-
-rb_pref = st.sidebar.slider(
-    "RB preference (-5 to +5)",
-    min_value=-5,
-    max_value=5,
-    value=0,
-    help="Negative = bots avoid RBs; positive = bots favor RBs."
+st.sidebar.subheader("Bot Configuration Mode")
+bot_mode = st.sidebar.radio(
+    "How should bots be configured?",
+    ["General (global sliders)", "Advanced (per-team bots)"],
+    index=0,
+    key="bot_mode",
 )
 
-qb_pref = st.sidebar.slider(
-    "QB preference (-5 to +5)",
-    min_value=-5,
-    max_value=5,
-    value=0,
-    help="Negative = bots avoid QBs; positive = bots favor QBs."
-)
-
-rookie_pref = st.sidebar.slider(
-    "Rookie preference (-5 to +5)",
-    min_value=-5,
-    max_value=5,
-    value=0,
-    help="Negative = avoid rookies; positive = prefer rookies."
-)
-
-# ---------- team preference toggle ----------
-
-st.sidebar.subheader("Team Preference")
-
-# Keep track of whether the user has enabled team preference
-if "use_team_pref" not in st.session_state:
-    st.session_state.use_team_pref = False
-
-if st.sidebar.button("Add team preference"):
-    st.session_state.use_team_pref = True
-
+# Defaults used in general mode (and as fallback)
 fav_team = None
 team_pref = 0
+rb_pref = 0
+qb_pref = 0
+rookie_pref = 0
 
-if st.session_state.use_team_pref:
-    team_options = sorted(players_df["Team"].unique())
-    fav_team_choice = st.sidebar.selectbox(
-        "Team for bots to favor",
-        ["None"] + team_options,
-    )
-    team_pref = st.sidebar.slider(
-        "Team preference (-5 to +5)",
+# Ensure we always have a bot_profiles list matching num_teams
+if "bot_profiles" not in st.session_state or len(st.session_state.bot_profiles) != num_teams:
+    st.session_state.bot_profiles = [None] * num_teams  # index = team_idx
+
+
+if bot_mode.startswith("General"):
+    # ---------- general mode: global sliders for all bots ----------
+
+    st.sidebar.subheader("Bot Preferences (Global)")
+
+    rb_pref = st.sidebar.slider(
+        "RB preference (-5 to +5)",
         min_value=-5,
         max_value=5,
-        value=3,
-        help="Negative = bots avoid this team; positive = bots favor this team."
+        value=0,
+        help="Negative = bots avoid RBs; positive = bots favor RBs."
     )
 
-    if fav_team_choice != "None":
-        fav_team = fav_team_choice
+    qb_pref = st.sidebar.slider(
+        "QB preference (-5 to +5)",
+        min_value=-5,
+        max_value=5,
+        value=0,
+        help="Negative = bots avoid QBs; positive = bots favor QBs."
+    )
+
+    rookie_pref = st.sidebar.slider(
+        "Rookie preference (-5 to +5)",
+        min_value=-5,
+        max_value=5,
+        value=0,
+        help="Negative = avoid rookies; positive = prefer rookies."
+    )
+
+    # ---------- team preference toggle (global) ----------
+
+    st.sidebar.subheader("Team Preference (Global)")
+
+    if "use_team_pref" not in st.session_state:
+        st.session_state.use_team_pref = False
+
+    if st.sidebar.button("Add team preference"):
+        st.session_state.use_team_pref = True
+
+    if st.session_state.use_team_pref:
+        team_options = sorted(players_df["Team"].unique())
+        fav_team_choice = st.sidebar.selectbox(
+            "Team for bots to favor",
+            ["None"] + team_options,
+        )
+        team_pref = st.sidebar.slider(
+            "Team preference (-5 to +5)",
+            min_value=-5,
+            max_value=5,
+            value=3,
+            help="Negative = bots avoid this team; positive = bots favor this team."
+        )
+
+        if fav_team_choice != "None":
+            fav_team = fav_team_choice
+
+    # In general mode, we don't use per-team profiles for logic yet,
+    # but they will be shown as "General bot" in the UI.
+    for i in range(num_teams):
+        st.session_state.bot_profiles[i] = None
+
+else:
+    # ---------- advanced mode: per-team bot profiles ----------
+
+    st.sidebar.subheader("Per-Team Bot Profiles")
+
+    preset_names = list(BOT_PRESETS.keys())
+    team_codes = sorted(players_df["Team"].unique())
+
+    for idx in range(num_teams):
+        if idx == user_team_index:
+            st.sidebar.markdown(f"**Team {idx+1}: You (manual drafter)**")
+            st.session_state.bot_profiles[idx] = None
+            continue
+
+        st.sidebar.markdown(f"**Team {idx+1} Bot**")
+
+        preset_name = st.sidebar.selectbox(
+            f"Profile for Team {idx+1}",
+            preset_names,
+            key=f"bot_profile_{idx}",
+        )
+
+        base_profile = BOT_PRESETS[preset_name]
+
+        # Create a copy so we can customize per-team
+        profile = BotProfile(
+            name=base_profile.name,
+            rb_pref=base_profile.rb_pref,
+            qb_pref=base_profile.qb_pref,
+            rookie_pref=base_profile.rookie_pref,
+            team_pref=base_profile.team_pref,
+            stack_weight=base_profile.stack_weight,
+            randomness_factor=base_profile.randomness_factor,
+            fav_team=base_profile.fav_team,
+        )
+
+        # If this bot is a Team Super Fan, let the user pick a favorite team
+        if preset_name == "Team Super Fan":
+            fav = st.sidebar.selectbox(
+                f"Favorite NFL team (Team {idx+1})",
+                ["None"] + team_codes,
+                key=f"fav_team_{idx}",
+            )
+            if fav != "None":
+                profile.fav_team = fav
+
+        st.session_state.bot_profiles[idx] = profile
 
 # ---------- session state: draft + recent picks ----------
 
@@ -126,8 +272,8 @@ if st.sidebar.button("Restart draft"):
     st.session_state.recent_picks = []
     st.session_state.draft_started = False
     st.session_state.use_team_pref = False
+    st.session_state.bot_profiles = [None] * num_teams
     draft = st.session_state.draft
-
 
 # ---------- main draft area ----------
 
@@ -156,25 +302,37 @@ if not st.session_state.draft_started:
 # ---------- main draft area (after start) ----------
 
 # Auto-advance bots until it's the user's turn or the draft ends
-live_pick_box = st.empty()  # placeholder for simple "current pick" animation
-
 while (
     not draft.is_finished()
     and draft.get_current_team_index() != draft.user_team_index
 ):
-    # Compute overall pick BEFORE advancing (this is the pick they're about to make)
-    current_overall = (
-        (draft.current_round - 1) * draft.num_teams
-        + draft.current_pick_in_round
-    )
+    current_overall = (draft.current_round - 1) * draft.num_teams + draft.current_pick_in_round
     bot_team_idx = draft.get_current_team_index()
 
-    drafted = draft.make_bot_pick_with_prefs(
-        rb_pref=rb_pref,
-        qb_pref=qb_pref,
-        rookie_pref=rookie_pref,
-        team_pref=team_pref
-    )
+    # Decide which bot config to use for this team
+    if bot_mode.startswith("Advanced") and st.session_state.bot_profiles[bot_team_idx] is not None:
+        cfg = st.session_state.bot_profiles[bot_team_idx]
+        drafted = draft.make_bot_pick_with_prefs(
+            rb_pref=cfg.rb_pref,
+            qb_pref=cfg.qb_pref,
+            rookie_pref=cfg.rookie_pref,
+            fav_team=cfg.fav_team,
+            team_pref=cfg.team_pref,
+            stack_weight=cfg.stack_weight,
+            randomness_factor=cfg.randomness_factor,
+        )
+    else:
+        # General mode (or no profile available): use global sliders
+        drafted = draft.make_bot_pick_with_prefs(
+            rb_pref=rb_pref,
+            qb_pref=qb_pref,
+            rookie_pref=rookie_pref,
+            fav_team=fav_team,
+            team_pref=team_pref,
+            stack_weight=1.5,
+            randomness_factor=1.0,
+        )
+
     if drafted is None:
         break
 
@@ -183,6 +341,7 @@ while (
         f"{drafted.name} ({drafted.position} - {drafted.team}, ADP {int(drafted.adp)})"
     )
     st.session_state.recent_picks.append(text)
+
 
     # Show this pick in a live "animation" box and pause briefly
     live_pick_box.info(text)
@@ -262,6 +421,19 @@ if user_on_clock:
 
                 # Force a rerun so bots immediately pick and UI updates
                 st.rerun()
+
+# ---------- Teams & Bot Profiles Overview ----------
+
+st.markdown("### Teams & Bots")
+
+for idx, team in enumerate(draft.teams):
+    if idx == draft.user_team_index:
+        st.write(f"Team {idx+1}: **You (manual)**")
+    else:
+        if bot_mode.startswith("Advanced") and st.session_state.bot_profiles[idx] is not None:
+            st.write(f"Team {idx+1}: {st.session_state.bot_profiles[idx].name}")
+        else:
+            st.write(f"Team {idx+1}: General bot")
 
 # ---------- Your roster + draft summary ----------
 
