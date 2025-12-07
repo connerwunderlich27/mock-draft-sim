@@ -230,7 +230,7 @@ class Draft:
 
         # ----- controlled randomness (additive) -----
         # Earlier rounds: small noise, later rounds: larger.
-        noise_scale = min(0.5 + 0.4 * (round_index - 1), 3.0)
+        noise_scale = min(1.0 + 0.5 * (round_index - 1), 4.0)
         noise = random.uniform(-noise_scale, noise_scale) * randomness_factor
         score += noise
 
