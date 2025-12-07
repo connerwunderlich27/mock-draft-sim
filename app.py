@@ -117,22 +117,24 @@ def render_draft_board(draft: Draft):
                     adp_int = int(p.adp)
                 except Exception:
                     adp_int = p.adp
+
+                # NOTE: no leading spaces before <div> lines
                 board_html += f"""
-                <div class="draft-card">
-                  <div class="draft-card-player" style="color:{pos_color};">
-                    {player_name} ({pos})
-                  </div>
-                  <div class="draft-card-meta">
-                    {nfl_team} • ADP {adp_int}
-                  </div>
-                </div>
-                """
+<div class="draft-card">
+  <div class="draft-card-player" style="color:{pos_color};">
+    {player_name} ({pos})
+  </div>
+  <div class="draft-card-meta">
+    {nfl_team} • ADP {adp_int}
+  </div>
+</div>
+"""
             else:
                 # Empty cell (no pick yet in this round for this team)
                 board_html += """
-                <div class="draft-card draft-card-empty">
-                </div>
-                """
+<div class="draft-card draft-card-empty">
+</div>
+"""
 
     board_html += """
       </div>
