@@ -31,8 +31,8 @@ players_df = load_adp_table()
 @dataclass
 class BotProfile:
     name: str
-    rb_pref: int            # -5..+5
     qb_pref: int            # -5..+5
+    rb_pref: int            # -5..+5
     rookie_pref: int        # -5..+5
     team_pref: int          # -5..+5
     stack_weight: float     # how much this bot cares about stacking
