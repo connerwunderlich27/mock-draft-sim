@@ -135,6 +135,7 @@ class Draft:
         team_pref: int,
         stack_weight: float,
         randomness_factor: float,
+        **kwargs,
     ) -> float:
         """
         Compute a score for a player given bot preferences.
@@ -245,6 +246,7 @@ class Draft:
         stack_weight: float = 1.5,
         randomness_factor: float = 1.0,
         lookahead: int = 30,
+        **kwargs,
     ) -> Optional[Player]:
         """
         Bot pick that takes into account position / rookie / team preferences.
