@@ -426,24 +426,23 @@ if st.sidebar.button("Restart draft"):
     st.session_state.bot_profiles = [None] * num_teams
     draft = st.session_state.draft
 
-# ---------- main draft area ----------
-
+# ---------- INITIAL SETUP SCREEN (shown only before draft begins) ----------
 if not st.session_state.draft_started:
-    st.header("Set up your mock draft")
+
+    st.header("Set up Your Mock Draft")
 
     st.markdown(
         f"**Number of teams:** {num_teams}  \n"
         f"**Number of rounds:** {num_rounds}  \n"
         f"**Your draft slot:** {user_slot}"
     )
-    st.markdown(
-        "Adjust the settings in the sidebar, then click **Start Draft** when you're ready."
-    )
+    st.markdown("Adjust settings in the sidebar, then click **Start Draft**.")
 
     if st.button("Start Draft"):
         st.session_state.draft_started = True
-    else:
-        st.stop()
+        st.rerun()   # Immediately reload into draft mode
+
+    st.stop()       # Prevent ANY draft UI from loading until started
 
 # ---------- after start: live pick + board ----------
 
