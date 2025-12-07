@@ -440,12 +440,32 @@ if not st.session_state.draft_started:
 
     st.markdown("### Lineup Settings")
 
-    rb_slots = st.slider("Starting RBs", 2, 4, 2)
-    wr_slots = st.slider("Starting WRs", 2, 4, 3)
-    flex_slots = st.slider("Flex spots (RB/WR/TE)", 1, 4, 2)
-    sflex_slots = st.slider("Superflex spots (QB/RB/WR/TE)", 1, 4, 1)
+    rb_slots = st.selectbox(
+        "Starting RBs",
+        [2, 3, 4],
+        index=0,  # default 2
+    )
 
-    st.caption("Assumed: 1 QB and 1 TE starting slot. Extras go to bench.")
+    wr_slots = st.selectbox(
+        "Starting WRs",
+        [2, 3, 4],
+        index=1,  # default 3
+    )
+
+    flex_slots = st.selectbox(
+        "Flex spots (RB/WR/TE)",
+        [0, 1, 2, 3, 4],
+        index=2,  # default 2
+    )
+
+    sflex_slots = st.selectbox(
+        "Superflex spots (QB/RB/WR/TE)",
+        [0, 1, 2, 3, 4],
+        index=1,  # default 1
+    )
+
+st.caption("Assumed: 1 QB and 1 TE starting slot. Extras go to bench.")
+
 
     if st.button("Start Draft"):
         st.session_state.draft_started = True
