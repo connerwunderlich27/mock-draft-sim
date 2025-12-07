@@ -17,7 +17,6 @@ st.title("Fantasy Football Mock Draft Simulator")
 
 # ---------- load ADP table ----------
 
-
 @st.cache_data
 def load_adp_table(path: str = "ADP_Table.csv") -> pd.DataFrame:
     df = pd.read_csv(path)
@@ -31,7 +30,6 @@ def load_adp_table(path: str = "ADP_Table.csv") -> pd.DataFrame:
 players_df = load_adp_table()
 
 # ---------- draft board visual ----------
-
 
 def render_draft_board(draft: Draft):
     """
@@ -190,7 +188,6 @@ def render_draft_board(draft: Draft):
 
 # ---------- Bot profile definitions (for advanced mode) ----------
 
-
 @dataclass
 class BotProfile:
     name: str
@@ -348,8 +345,7 @@ if bot_mode.startswith("General"):
         if fav_team_choice != "None":
             fav_team = fav_team_choice
 
-    # in general mode we don't use per-team profiles for logic,
-    # so mark them None
+    # general mode: no per-team profiles
     for i in range(num_teams):
         st.session_state.bot_profiles[i] = None
 
@@ -464,8 +460,7 @@ if not st.session_state.draft_started:
         index=1,  # default 1
     )
 
-st.caption("Assumed: 1 QB and 1 TE starting slot. Extras go to bench.")
-
+    st.caption("Assumed: 1 QB and 1 TE starting slot. Extras go to bench.")
 
     if st.button("Start Draft"):
         st.session_state.draft_started = True
@@ -481,7 +476,6 @@ st.caption("Assumed: 1 QB and 1 TE starting slot. Extras go to bench.")
         st.rerun()
 
     st.stop()
-
 
 # ---------- after start: live pick + board ----------
 
@@ -544,7 +538,7 @@ finished = draft.is_finished()
 if finished:
     st.success("Draft complete!")
 
-# your pick
+# your pick / status
 current_team_idx = draft.get_current_team_index()
 current_overall = (
     (draft.current_round - 1) * draft.num_teams
@@ -560,15 +554,16 @@ st.markdown(
     f"**Your slot:** {user_slot}"
 )
 
-if user_on_clock:
+if user_on_clock and not finished:
     st.success("🧠 Your pick is **on the clock!**")
 
     available = draft.get_available_players()
-    
-    # make filter more user-friendly
+
+    # custom position order
     POSITION_ORDER = ["QB", "RB", "WR", "TE", "DEF", "K"]
     raw_positions = {p.position for p in available}
     pos_options = [pos for pos in POSITION_ORDER if pos in raw_positions]
+
     pos_choice = st.selectbox("Filter by position", ["All"] + pos_options)
 
     if pos_choice != "All":
@@ -600,6 +595,6 @@ if user_on_clock:
                 )
                 st.session_state.recent_picks.append(text)
                 st.rerun()
-else:
+elif not finished:
     # Normally we shouldn't land here because bots auto-advance
     st.info("Advancing bots to your next pick...")
