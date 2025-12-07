@@ -301,6 +301,9 @@ if not st.session_state.draft_started:
 
 # ---------- main draft area (after start) ----------
 
+# Box to show the most recent pick as it happens
+live_pick_box = st.empty()
+
 # Auto-advance bots until it's the user's turn or the draft ends
 while (
     not draft.is_finished()
