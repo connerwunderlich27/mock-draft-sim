@@ -427,6 +427,7 @@ if st.sidebar.button("Restart draft"):
     draft = st.session_state.draft
 
 # ---------- INITIAL SETUP SCREEN (shown only before draft begins) ----------
+
 if not st.session_state.draft_started:
 
     st.header("Set up Your Mock Draft")
@@ -436,13 +437,31 @@ if not st.session_state.draft_started:
         f"**Number of rounds:** {num_rounds}  \n"
         f"**Your draft slot:** {user_slot}"
     )
-    st.markdown("Adjust settings in the sidebar, then click **Start Draft**.")
+
+    st.markdown("### Lineup Settings")
+
+    rb_slots = st.slider("Starting RBs", 2, 4, 2)
+    wr_slots = st.slider("Starting WRs", 2, 4, 3)
+    flex_slots = st.slider("Flex spots (RB/WR/TE)", 1, 4, 2)
+    sflex_slots = st.slider("Superflex spots (QB/RB/WR/TE)", 1, 4, 1)
+
+    st.caption("Assumed: 1 QB and 1 TE starting slot. Extras go to bench.")
 
     if st.button("Start Draft"):
         st.session_state.draft_started = True
-        st.rerun()   # Immediately reload into draft mode
+        # Save lineup configuration
+        st.session_state.lineup_config = {
+            "qb": 1,
+            "rb": rb_slots,
+            "wr": wr_slots,
+            "te": 1,
+            "flex": flex_slots,
+            "sflex": sflex_slots,
+        }
+        st.rerun()
 
-    st.stop()       # Prevent ANY draft UI from loading until started
+    st.stop()
+
 
 # ---------- after start: live pick + board ----------
 
@@ -501,12 +520,9 @@ while (
 with board_container:
     render_draft_board(draft)
 
-# finished?
-if draft.is_finished():
+finished = draft.is_finished()
+if finished:
     st.success("Draft complete!")
-    st.subheader("Final Draft Board")
-    render_draft_board(draft)
-    st.stop()
 
 # your pick
 current_team_idx = draft.get_current_team_index()
