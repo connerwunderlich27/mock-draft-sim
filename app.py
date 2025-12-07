@@ -529,7 +529,11 @@ if user_on_clock:
     st.success("🧠 Your pick is **on the clock!**")
 
     available = draft.get_available_players()
-    pos_options = sorted({p.position for p in available})
+    
+    # make filter more user-friendly
+    POSITION_ORDER = ["QB", "RB", "WR", "TE", "DEF", "K"]
+    raw_positions = {p.position for p in available}
+    pos_options = [pos for pos in POSITION_ORDER if pos in raw_positions]
     pos_choice = st.selectbox("Filter by position", ["All"] + pos_options)
 
     if pos_choice != "All":
