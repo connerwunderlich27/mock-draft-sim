@@ -28,10 +28,23 @@ players_df = load_adp_table()
 
 # ---------- create board visual ----------
 def render_draft_board(draft: Draft):
-    """Render a Sleeper-style draft board: rounds as rows, teams as columns."""
+    """
+    Sleeper-style draft board:
+      - Teams as columns (with bot personality under name)
+      - Rounds as rows
+      - Each tile: player, position, NFL team, and round.pick (e.g. 3.04)
+      - Red background, gray cards, position-colored text
+    """
     teams = draft.teams
     num_teams = draft.num_teams
     num_rounds = draft.num_rounds
+
+    # Grab bot profiles if they exist so we can show personalities
+    bot_profiles = None
+    if "bot_profiles" in st.session_state:
+        bot_profiles = st.session_state.bot_profiles
+    else:
+        bot_profiles = [None] * num_teams
 
     # Position text colors
     pos_colors = {
@@ -45,70 +58,103 @@ def render_draft_board(draft: Draft):
     default_color = "#ffffff"
 
     board_html = f"""
-    <style>
-    .draft-board-wrapper {{
-      background-color: #8b0000; /* dark red board background */
-      padding: 12px;
-      border-radius: 8px;
-      margin-top: 8px;
-    }}
-    .draft-board {{
-      display: grid;
-      grid-template-columns: 120px repeat({num_teams}, 1fr);
-      gap: 6px;
-    }}
-    .draft-board-header {{
-      font-weight: 700;
-      text-align: center;
-      color: #ffffff;
-      font-size: 0.85rem;
-    }}
-    .draft-board-round-label {{
-      font-weight: 600;
-      color: #ffffff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.85rem;
-    }}
-    .draft-card {{
-      background-color: #333333; /* gray cards */
-      border-radius: 6px;
-      padding: 4px;
-      min-height: 42px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }}
-    .draft-card-empty {{
-      opacity: 0.25;
-    }}
-    .draft-card-player {{
-      font-size: 0.80rem;
-      font-weight: 600;
-    }}
-    .draft-card-meta {{
-      font-size: 0.70rem;
-    }}
-    </style>
-    <div class="draft-board-wrapper">
-      <div class="draft-board">
-        <div></div>
-    """
+<style>
+.draft-board-wrapper {{
+  background-color: #8b0000; /* dark red board background */
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 8px;
+}}
+.draft-board {{
+  display: grid;
+  grid-template-columns: 120px repeat({num_teams}, 1fr);
+  gap: 6px;
+}}
+.draft-board-header {{
+  font-weight: 700;
+  text-align: center;
+  color: #ffffff;
+  font-size: 0.85rem;
+}}
+.draft-board-bot-label {{
+  display: block;
+  font-weight: 400;
+  font-size: 0.70rem;
+  color: #dddddd;
+  margin-top: 2px;
+}}
+.draft-board-round-label {{
+  font-weight: 600;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}}
+.draft-card {{
+  background-color: #333333; /* gray cards */
+  border-radius: 6px;
+  padding: 4px;
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}}
+.draft-card-empty {{
+  opacity: 0.15;
+}}
+.draft-card-player {{
+  font-size: 0.80rem;
+  font-weight: 600;
+}}
+.draft-card-meta {{
+  font-size: 0.70rem;
+}}
+</style>
+<div class="draft-board-wrapper">
+  <div class="draft-board">
+    <div></div>
+"""
 
-    # Header row: team names
+    # ----- Header row: team names + personalities -----
     for idx, team in enumerate(teams):
-        board_html += f'<div class="draft-board-header">Team {idx+1}</div>'
+        # Base label
+        if idx == draft.user_team_index:
+            top_label = "You"
+            sub_label = "(manual)"
+        else:
+            prof = bot_profiles[idx]
+            if prof is not None:
+                top_label = f"Team {idx+1}"
+                sub_label = prof.name
+            else:
+                top_label = f"Team {idx+1}"
+                sub_label = "General bot"
 
-    # Rows: rounds
+        board_html += (
+            '<div class="draft-board-header">'
+            f"{top_label}"
+            f'<span class="draft-board-bot-label">{sub_label}</span>'
+            "</div>"
+        )
+
+    # ----- Rows: rounds -----
     for rnd in range(1, num_rounds + 1):
         # Round label in first column
         board_html += f'<div class="draft-board-round-label">Round {rnd}</div>'
 
+        # Snake order for this round, so we can compute pick number like 3.04
+        order = draft._get_pick_order(rnd)  # list of team indices, 0-based
+
         # One cell per team in this round
-        for team in teams:
+        for team_idx, team in enumerate(teams):
             if len(team.picks) >= rnd:
                 p = team.picks[rnd - 1]
+
+                # Round.pick formatting
+                pick_in_round = order.index(team_idx) + 1  # 1-based
+                pick_label = f"{rnd}.{pick_in_round:02d}"
+
                 pos_color = pos_colors.get(p.position, default_color)
                 player_name = p.name
                 pos = p.position
@@ -118,14 +164,13 @@ def render_draft_board(draft: Draft):
                 except Exception:
                     adp_int = p.adp
 
-                # NOTE: no leading spaces before <div> lines
                 board_html += f"""
 <div class="draft-card">
   <div class="draft-card-player" style="color:{pos_color};">
     {player_name} ({pos})
   </div>
   <div class="draft-card-meta">
-    {nfl_team} • ADP {adp_int}
+    {nfl_team} • Pick {pick_label} • ADP {adp_int}
   </div>
 </div>
 """
@@ -137,9 +182,9 @@ def render_draft_board(draft: Draft):
 """
 
     board_html += """
-      </div>
-    </div>
-    """
+  </div>
+</div>
+"""
 
     st.markdown(board_html, unsafe_allow_html=True)
 
