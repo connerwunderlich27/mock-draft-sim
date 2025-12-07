@@ -2,18 +2,21 @@
 # ---------------------------
 # Streamlit UI for the mock draft simulator.
 
-import streamlit as st
-import pandas as pd
-from draft_engine import Draft
+import time
 from dataclasses import dataclass
 from typing import Optional
-import time  # for simple pick animation
+
+import pandas as pd
+import streamlit as st
+
+from draft_engine import Draft
 
 st.set_page_config(page_title="Fantasy Football Mock Draft Simulator", layout="wide")
 
 st.title("Fantasy Football Mock Draft Simulator")
 
 # ---------- load ADP table ----------
+
 
 @st.cache_data
 def load_adp_table(path: str = "ADP_Table.csv") -> pd.DataFrame:
@@ -24,9 +27,12 @@ def load_adp_table(path: str = "ADP_Table.csv") -> pd.DataFrame:
         raise ValueError(f"ADP_Table.csv missing columns: {missing}")
     return df
 
+
 players_df = load_adp_table()
 
-# ---------- create board visual ----------
+# ---------- draft board visual ----------
+
+
 def render_draft_board(draft: Draft):
     """
     Sleeper-style draft board:
@@ -39,8 +45,7 @@ def render_draft_board(draft: Draft):
     num_teams = draft.num_teams
     num_rounds = draft.num_rounds
 
-    # Grab bot profiles if they exist so we can show personalities
-    bot_profiles = None
+    # Bot profiles for labeling personalities
     if "bot_profiles" in st.session_state:
         bot_profiles = st.session_state.bot_profiles
     else:
@@ -52,8 +57,8 @@ def render_draft_board(draft: Draft):
         "RB": "#77dd77",  # green
         "WR": "#aec6cf",  # blue-ish
         "TE": "#cba4ff",  # purple
-        "DEF": "#ff6961", # red-ish
-        "K": "#fdfd96",   # yellow
+        "DEF": "#ff6961",  # red-ish
+        "K": "#fdfd96",  # yellow
     }
     default_color = "#ffffff"
 
@@ -118,7 +123,6 @@ def render_draft_board(draft: Draft):
 
     # ----- Header row: team names + personalities -----
     for idx, team in enumerate(teams):
-        # Base label
         if idx == draft.user_team_index:
             top_label = "You"
             sub_label = "(manual)"
@@ -140,18 +144,14 @@ def render_draft_board(draft: Draft):
 
     # ----- Rows: rounds -----
     for rnd in range(1, num_rounds + 1):
-        # Round label in first column
         board_html += f'<div class="draft-board-round-label">Round {rnd}</div>'
 
-        # Snake order for this round, so we can compute pick number like 3.04
-        order = draft._get_pick_order(rnd)  # list of team indices, 0-based
+        order = draft._get_pick_order(rnd)  # snake order for this round
 
-        # One cell per team in this round
         for team_idx, team in enumerate(teams):
             if len(team.picks) >= rnd:
                 p = team.picks[rnd - 1]
 
-                # Round.pick formatting
                 pick_in_round = order.index(team_idx) + 1  # 1-based
                 pick_label = f"{rnd}.{pick_in_round:02d}"
 
@@ -175,7 +175,6 @@ def render_draft_board(draft: Draft):
 </div>
 """
             else:
-                # Empty cell (no pick yet in this round for this team)
                 board_html += """
 <div class="draft-card draft-card-empty">
 </div>
@@ -188,7 +187,9 @@ def render_draft_board(draft: Draft):
 
     st.markdown(board_html, unsafe_allow_html=True)
 
+
 # ---------- Bot profile definitions (for advanced mode) ----------
+
 
 @dataclass
 class BotProfile:
@@ -217,10 +218,9 @@ BOT_PRESETS = {
         rb_pref=0,
         qb_pref=0,
         rookie_pref=0,
-        team_pref=5,         # big preference for one team
-        stack_weight=2.0,    # likes stacking with that team
+        team_pref=5,
+        stack_weight=2.0,
         randomness_factor=1.0,
-        # fav_team will be chosen in the UI
     ),
     "RB Enthusiast": BotProfile(
         name="RB Enthusiast",
@@ -234,17 +234,17 @@ BOT_PRESETS = {
     "Elite Onesie Drafter": BotProfile(
         name="Elite Onesie Drafter",
         rb_pref=1,
-        qb_pref=2,           # a bit more QB-friendly
+        qb_pref=2,
         rookie_pref=0,
         team_pref=0,
         stack_weight=1.5,
-        randomness_factor=0.9,  # slightly more disciplined
+        randomness_factor=0.9,
     ),
     "Upside Drafter": BotProfile(
         name="Upside Drafter",
         rb_pref=0,
         qb_pref=0,
-        rookie_pref=5,       # loves rookies
+        rookie_pref=5,
         team_pref=0,
         stack_weight=2.0,
         randomness_factor=1.2,
@@ -253,10 +253,10 @@ BOT_PRESETS = {
         name="Chaos Bot",
         rb_pref=0,
         qb_pref=0,
-        rookie_pref=2,       # mild rookie lean
+        rookie_pref=2,
         team_pref=0,
-        stack_weight=1.5,    # normal stacking
-        randomness_factor=2.5,  # BIG variance: reaches and weird picks
+        stack_weight=1.5,
+        randomness_factor=2.5,
     ),
 }
 
@@ -275,7 +275,7 @@ user_team_index = user_slot - 1
 
 st.sidebar.caption("Adjust settings, then start the draft.")
 
-# ---------- bot configuration mode + preferences ----------
+# ---------- bot configuration mode ----------
 
 st.sidebar.subheader("Bot Configuration Mode")
 bot_mode = st.sidebar.radio(
@@ -285,50 +285,45 @@ bot_mode = st.sidebar.radio(
     key="bot_mode",
 )
 
-# Defaults used in general mode (and as fallback)
-fav_team = None
+# Defaults for general mode
+fav_team: Optional[str] = None
 team_pref = 0
 rb_pref = 0
 qb_pref = 0
 rookie_pref = 0
 
-# Ensure we always have a bot_profiles list matching num_teams
+# ensure bot_profiles list exists and matches num_teams
 if "bot_profiles" not in st.session_state or len(st.session_state.bot_profiles) != num_teams:
-    st.session_state.bot_profiles = [None] * num_teams  # index = team_idx
-
+    st.session_state.bot_profiles = [None] * num_teams
 
 if bot_mode.startswith("General"):
-    # ---------- general mode: global sliders for all bots ----------
-
     st.sidebar.subheader("Bot Preferences (Global)")
-    
+
     qb_pref = st.sidebar.slider(
         "QB preference (-5 to +5)",
         min_value=-5,
         max_value=5,
         value=0,
-        help="Negative = bots avoid QBs; positive = bots favor QBs."
+        help="Negative = bots avoid QBs; positive = bots favor QBs.",
     )
-    
+
     rb_pref = st.sidebar.slider(
         "RB preference (-5 to +5)",
         min_value=-5,
         max_value=5,
         value=0,
-        help="Negative = bots avoid RBs; positive = bots favor RBs."
+        help="Negative = bots avoid RBs; positive = bots favor RBs.",
     )
-
 
     rookie_pref = st.sidebar.slider(
         "Rookie preference (-5 to +5)",
         min_value=-5,
         max_value=5,
         value=0,
-        help="Negative = avoid rookies; positive = prefer rookies."
+        help="Negative = avoid rookies; positive = prefer rookies.",
     )
 
-    # ---------- team preference toggle (global) ----------
-
+    # global team preference
     st.sidebar.subheader("Team Preference (Global)")
 
     if "use_team_pref" not in st.session_state:
@@ -348,20 +343,18 @@ if bot_mode.startswith("General"):
             min_value=-5,
             max_value=5,
             value=3,
-            help="Negative = bots avoid this team; positive = bots favor this team."
+            help="Negative = bots avoid this team; positive = bots favor this team.",
         )
-
         if fav_team_choice != "None":
             fav_team = fav_team_choice
 
-    # In general mode, we don't use per-team profiles for logic yet,
-    # but they will be shown as "General bot" in the UI.
+    # in general mode we don't use per-team profiles for logic,
+    # so mark them None
     for i in range(num_teams):
         st.session_state.bot_profiles[i] = None
 
 else:
     # ---------- advanced mode: per-team bot profiles ----------
-
     st.sidebar.subheader("Per-Team Bot Profiles")
 
     preset_names = list(BOT_PRESETS.keys())
@@ -369,21 +362,18 @@ else:
 
     for idx in range(num_teams):
         if idx == user_team_index:
-            st.sidebar.markdown(f"**Team {idx+1}: You (manual drafter)**")
+            st.sidebar.markdown(f"**Team {idx + 1}: You (manual drafter)**")
             st.session_state.bot_profiles[idx] = None
             continue
 
-        st.sidebar.markdown(f"**Team {idx+1} Bot**")
-
+        st.sidebar.markdown(f"**Team {idx + 1} Bot**")
         preset_name = st.sidebar.selectbox(
-            f"Profile for Team {idx+1}",
+            f"Profile for Team {idx + 1}",
             preset_names,
             key=f"bot_profile_{idx}",
         )
 
         base_profile = BOT_PRESETS[preset_name]
-
-        # Create a copy so we can customize per-team
         profile = BotProfile(
             name=base_profile.name,
             rb_pref=base_profile.rb_pref,
@@ -395,10 +385,9 @@ else:
             fav_team=base_profile.fav_team,
         )
 
-        # If this bot is a Team Super Fan, let the user pick a favorite team
         if preset_name == "Team Super Fan":
             fav = st.sidebar.selectbox(
-                f"Favorite NFL team (Team {idx+1})",
+                f"Favorite NFL team (Team {idx + 1})",
                 ["None"] + team_codes,
                 key=f"fav_team_{idx}",
             )
@@ -407,7 +396,7 @@ else:
 
         st.session_state.bot_profiles[idx] = profile
 
-# ---------- session state: draft + recent picks ----------
+# ---------- session state: draft + flags ----------
 
 if "draft" not in st.session_state:
     st.session_state.draft = Draft(
@@ -420,11 +409,10 @@ if "draft" not in st.session_state:
 
 draft: Draft = st.session_state.draft
 
-# Track whether the draft has actually started yet
 if "draft_started" not in st.session_state:
     st.session_state.draft_started = False
 
-# Allow user to restart with new settings
+# restart button
 if st.sidebar.button("Restart draft"):
     st.session_state.draft = Draft(
         players_df=players_df,
@@ -440,7 +428,6 @@ if st.sidebar.button("Restart draft"):
 
 # ---------- main draft area ----------
 
-# If the draft hasn't started yet, show a setup screen and wait
 if not st.session_state.draft_started:
     st.header("Set up your mock draft")
 
@@ -453,29 +440,27 @@ if not st.session_state.draft_started:
         "Adjust the settings in the sidebar, then click **Start Draft** when you're ready."
     )
 
-    clicked = st.button("Start Draft")
-
-    if clicked:
-        # Mark as started and immediately continue into the draft
+    if st.button("Start Draft"):
         st.session_state.draft_started = True
     else:
-        # Still not started: stop here, don't run picks yet
         st.stop()
 
-# ---------- main draft area (after start) ----------
+# ---------- after start: live pick + board ----------
 
-# Box to show the most recent pick as it happens
 live_pick_box = st.empty()
+board_container = st.empty()
 
-# Auto-advance bots until it's the user's turn or the draft ends
+# auto-advance bots to your pick
 while (
     not draft.is_finished()
     and draft.get_current_team_index() != draft.user_team_index
 ):
-    current_overall = (draft.current_round - 1) * draft.num_teams + draft.current_pick_in_round
+    current_overall = (
+        (draft.current_round - 1) * draft.num_teams
+        + draft.current_pick_in_round
+    )
     bot_team_idx = draft.get_current_team_index()
 
-    # Decide which bot config to use for this team
     if bot_mode.startswith("Advanced") and st.session_state.bot_profiles[bot_team_idx] is not None:
         cfg = st.session_state.bot_profiles[bot_team_idx]
         drafted = draft.make_bot_pick_with_prefs(
@@ -488,7 +473,6 @@ while (
             randomness_factor=cfg.randomness_factor,
         )
     else:
-        # General mode (or no profile available): use global sliders
         drafted = draft.make_bot_pick_with_prefs(
             rb_pref=rb_pref,
             qb_pref=qb_pref,
@@ -508,48 +492,42 @@ while (
     )
     st.session_state.recent_picks.append(text)
 
+    with board_container:
+        render_draft_board(draft)
 
-    # Show this pick in a live "animation" box and pause briefly
     live_pick_box.info(text)
-    time.sleep(0.4)  # tweak this delay for faster/slower animation
+    time.sleep(0.4)
 
-# If the draft finished during auto-advance, show final results
+# ensure board rendered at least once
+with board_container:
+    render_draft_board(draft)
+
+# finished?
 if draft.is_finished():
     st.success("Draft complete!")
     st.subheader("Final Draft Board")
-    st.dataframe(draft.summary_df().sort_values("overall_pick"))
+    render_draft_board(draft)
     st.stop()
 
-# At this point, either it's your turn or the draft is over
+# your pick
 current_team_idx = draft.get_current_team_index()
 current_overall = (
     (draft.current_round - 1) * draft.num_teams
     + draft.current_pick_in_round
 )
-
-st.subheader(
-    f"Round {draft.current_round} - Pick {draft.current_pick_in_round} of {draft.num_teams} "
-    f"(Overall Pick #{current_overall})"
-)
-
-# ----- Recent picks section -----
-
-st.markdown("### Recent Bot Picks")
-if st.session_state.recent_picks:
-    # show last 5, newest on top
-    for text in st.session_state.recent_picks[-5:][::-1]:
-        st.info(text)
-else:
-    st.caption("No picks yet.")
-
 user_on_clock = current_team_idx == draft.user_team_index
 
-# ----- User action (should always be your pick here) -----
+st.markdown(
+    f"### Draft Status  \n"
+    f"**Round:** {draft.current_round} &nbsp;&nbsp;|&nbsp;&nbsp; "
+    f"**Pick in round:** {draft.current_pick_in_round} of {draft.num_teams} &nbsp;&nbsp;|&nbsp;&nbsp; "
+    f"**Overall pick:** #{current_overall} &nbsp;&nbsp;|&nbsp;&nbsp; "
+    f"**Your slot:** {user_slot}"
+)
 
 if user_on_clock:
-    st.markdown("## Your pick is on the clock!")
+    st.success("🧠 Your pick is **on the clock!**")
 
-    # position filter options from current pool
     available = draft.get_available_players()
     pos_options = sorted({p.position for p in available})
     pos_choice = st.selectbox("Filter by position", ["All"] + pos_options)
@@ -559,7 +537,6 @@ if user_on_clock:
     else:
         filtered = available
 
-    # limit dropdown length
     top_n = 60
     filtered = filtered[:top_n]
 
@@ -578,50 +555,12 @@ if user_on_clock:
             if drafted is None:
                 st.error("Player not found or already drafted.")
             else:
-                # Log your pick
                 text = (
                     f"Pick #{current_overall}: Team {draft.user_team_index + 1} drafted "
                     f"{drafted.name} ({drafted.position} - {drafted.team}, ADP {int(drafted.adp)})"
                 )
                 st.session_state.recent_picks.append(text)
-
-                # Force a rerun so bots immediately pick and UI updates
                 st.rerun()
-
-# ---------- Teams & Bot Profiles Overview ----------
-
-st.markdown("### Teams & Bots")
-
-for idx, team in enumerate(draft.teams):
-    if idx == draft.user_team_index:
-        st.write(f"Team {idx+1}: **You (manual)**")
-    else:
-        if bot_mode.startswith("Advanced") and st.session_state.bot_profiles[idx] is not None:
-            st.write(f"Team {idx+1}: {st.session_state.bot_profiles[idx].name}")
-        else:
-            st.write(f"Team {idx+1}: General bot")
-
-# ---------- Your roster + draft summary ----------
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("### Your Roster")
-    user_team = draft.teams[draft.user_team_index]
-    if user_team.picks:
-        roster_df = pd.DataFrame(
-            {
-                "player": [p.name for p in user_team.picks],
-                "position": [p.position for p in user_team.picks],
-                "team": [p.team for p in user_team.picks],
-                "adp": [p.adp for p in user_team.picks],
-            }
-        )
-        st.table(roster_df)
-    else:
-        st.caption("You haven't drafted anyone yet.")
-
-with col2:
-    st.markdown("### Draft Board")
-    render_draft_board(draft)
-
+else:
+    # Normally we shouldn't land here because bots auto-advance
+    st.info("Advancing bots to your next pick...")
