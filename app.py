@@ -186,6 +186,110 @@ def render_draft_board(draft: Draft):
     st.markdown(board_html, unsafe_allow_html=True)
 
 
+# ---------- Lineup building helper ----------
+
+def build_user_lineup(user_team, config):
+    """
+    Given the user's team (Draft.Team) and lineup config dict, return:
+      - slots: list of {"label": ..., "player": Player or None}
+      - bench: list of Player objects not fitting into the starting lineup
+    """
+    qb_slots = config.get("qb", 1)
+    rb_slots = config.get("rb", 2)
+    wr_slots = config.get("wr", 3)
+    te_slots = config.get("te", 1)
+    flex_slots = config.get("flex", 1)
+    sflex_slots = config.get("sflex", 1)
+
+    slots = []
+
+    # QB slots
+    for i in range(qb_slots):
+        label = "QB" if qb_slots == 1 else f"QB{i+1}"
+        slots.append({"label": label, "player": None})
+
+    # RB slots
+    for i in range(rb_slots):
+        slots.append({"label": f"RB{i+1}", "player": None})
+
+    # WR slots
+    for i in range(wr_slots):
+        slots.append({"label": f"WR{i+1}", "player": None})
+
+    # TE slots
+    for i in range(te_slots):
+        label = "TE" if te_slots == 1 else f"TE{i+1}"
+        slots.append({"label": label, "player": None})
+
+    # FLEX slots (RB/WR/TE)
+    for i in range(flex_slots):
+        slots.append({"label": f"FLEX{i+1}", "player": None})
+
+    # SUPERFLEX slots (QB/RB/WR/TE)
+    for i in range(sflex_slots):
+        slots.append({"label": f"SFLEX{i+1}", "player": None})
+
+    def first_empty(label_prefixes):
+        """Find first empty slot whose label starts with one of the prefixes."""
+        for s in slots:
+            if s["player"] is None and any(s["label"].startswith(p) for p in label_prefixes):
+                return s
+        return None
+
+    bench = []
+
+    # Fill slots in order of picks
+    for p in user_team.picks:
+        placed = False
+
+        if p.position == "QB":
+            # 1) QB slot, then SFLEX
+            target = first_empty(["QB"])
+            if target is None:
+                target = first_empty(["SFLEX"])
+            if target is not None:
+                target["player"] = p
+                placed = True
+
+        elif p.position == "RB":
+            # 1) RB slots, then FLEX, then SFLEX
+            target = first_empty(["RB"])
+            if target is None:
+                target = first_empty(["FLEX"])
+            if target is None:
+                target = first_empty(["SFLEX"])
+            if target is not None:
+                target["player"] = p
+                placed = True
+
+        elif p.position == "WR":
+            # 1) WR slots, then FLEX, then SFLEX
+            target = first_empty(["WR"])
+            if target is None:
+                target = first_empty(["FLEX"])
+            if target is None:
+                target = first_empty(["SFLEX"])
+            if target is not None:
+                target["player"] = p
+                placed = True
+
+        elif p.position == "TE":
+            # 1) TE slot, then FLEX, then SFLEX
+            target = first_empty(["TE"])
+            if target is None:
+                target = first_empty(["FLEX"])
+            if target is None:
+                target = first_empty(["SFLEX"])
+            if target is not None:
+                target["player"] = p
+                placed = True
+
+        if not placed:
+            bench.append(p)
+
+    return slots, bench
+
+
 # ---------- Bot profile definitions (for advanced mode) ----------
 
 @dataclass
@@ -430,7 +534,7 @@ if not st.session_state.draft_started:
 
     st.markdown(
         f"**Number of teams:** {num_teams}  \n"
-        f"**Number of rounds:** {num_rounds}  \n"
+        f"**Number of rounds (requested):** {num_rounds}  \n"
         f"**Your draft slot:** {user_slot}"
     )
 
@@ -460,10 +564,22 @@ if not st.session_state.draft_started:
         index=1,  # default 1
     )
 
+    total_starters = 1 + 1 + rb_slots + wr_slots + flex_slots + sflex_slots
+    st.markdown(
+        f"**Minimum rounds needed to fill starting lineup:** {total_starters}"
+    )
+    if num_rounds < total_starters:
+        st.warning(
+            "Number of rounds is less than total starters. "
+            "Rounds will be increased automatically to fit your lineup."
+        )
+
     st.caption("Assumed: 1 QB and 1 TE starting slot. Extras go to bench.")
 
     if st.button("Start Draft"):
-        st.session_state.draft_started = True
+        # Enforce rounds >= total starters
+        effective_rounds = max(num_rounds, total_starters)
+
         # Save lineup configuration
         st.session_state.lineup_config = {
             "qb": 1,
@@ -473,6 +589,17 @@ if not st.session_state.draft_started:
             "flex": flex_slots,
             "sflex": sflex_slots,
         }
+
+        # Rebuild draft with enforced rounds before starting
+        st.session_state.draft = Draft(
+            players_df=players_df,
+            num_teams=num_teams,
+            num_rounds=effective_rounds,
+            user_team_index=user_team_index,
+        )
+        st.session_state.recent_picks = []
+
+        st.session_state.draft_started = True
         st.rerun()
 
     st.stop()
@@ -598,3 +725,39 @@ if user_on_clock and not finished:
 elif not finished:
     # Normally we shouldn't land here because bots auto-advance
     st.info("Advancing bots to your next pick...")
+
+# ---------- Your Lineup (always visible) ----------
+
+st.markdown("### Your Lineup")
+
+lineup_config = st.session_state.get(
+    "lineup_config",
+    {"qb": 1, "rb": 2, "wr": 3, "te": 1, "flex": 1, "sflex": 1},
+)
+
+user_team = draft.teams[draft.user_team_index]
+slots, bench = build_user_lineup(user_team, lineup_config)
+
+lineup_rows = []
+for s in slots:
+    p = s["player"]
+    if p is None:
+        lineup_rows.append(
+            {"Slot": s["label"], "Player": "-", "Pos": "-", "Team": "-"}
+        )
+    else:
+        lineup_rows.append(
+            {"Slot": s["label"], "Player": p.name, "Pos": p.position, "Team": p.team}
+        )
+
+st.table(pd.DataFrame(lineup_rows))
+
+with st.expander("Bench"):
+    if bench:
+        bench_rows = [
+            {"Player": p.name, "Pos": p.position, "Team": p.team}
+            for p in bench
+        ]
+        st.table(pd.DataFrame(bench_rows))
+    else:
+        st.caption("No bench players yet.")
